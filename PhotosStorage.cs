@@ -9,13 +9,22 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Microsoft.Azure.Storage.Blob;
 using PhotosAzure.Models;
+using Photos.AnalyzerService.Abstractions;
 
 namespace PhotosAzure
 {
-    public static class PhotosStorage
+    public  class PhotosStorage
     {
+        public readonly IAnalyzerService analyzerService;
+
+        public PhotosStorage(IAnalyzerService analyzerService)
+        {
+            this.analyzerService = analyzerService;
+        }
+
+
         [FunctionName("PhotosStorage")]
-        public static async Task<IActionResult> Run(
+        public  async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous,  "post", Route = null)] HttpRequest req,
             [Blob("photos", FileAccess.ReadWrite, Connection = Literals.StorageConnectionString )] CloudBlobContainer blobContainer,
             [CosmosDB("photos", "metadata", ConnectionStringSetting = Literals.CosmosDBConnection, CreateIfNotExists = true)] IAsyncCollector<dynamic> items,
@@ -36,12 +45,15 @@ namespace PhotosAzure
                 var photoBytes = Convert.FromBase64String(request.Photo);
                 await cloudBlockBlob.UploadFromByteArrayAsync(photoBytes, 0, photoBytes.Length);
 
+                var analysisResult = await analyzerService.AnalyzeAsync(photoBytes);
+
                 var item = new
                 {
                     id = newId,
                     name = request.Name,
                     description = request.Description,
-                    tags = request.Tags
+                    tags = request.Tags,
+                    analysis = analysisResult
                 };
 
                 await items.AddAsync(item);
